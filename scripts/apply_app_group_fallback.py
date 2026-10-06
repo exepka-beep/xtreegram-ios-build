@@ -43,7 +43,11 @@ NEW = (
     "        // root view controller exists at that point), which leaves the app on\n"
     "        // a permanently black launch screen. Fall back to the app's own\n"
     "        // Documents directory instead of relying on the shared container.\n"
-    "        let maybeAppGroupUrl = FileManager.default.containerURL"
+    "        //\n"
+    "        // The explicit URL? annotation is required: the guard below still\n"
+    "        // binds this with `guard let`, which only compiles when the value is\n"
+    "        // Optional. `??` alone would narrow it to URL and break the build.\n"
+    "        let maybeAppGroupUrl: URL? = FileManager.default.containerURL"
     "(forSecurityApplicationGroupIdentifier: appGroupName)"
     " ?? URL(fileURLWithPath: NSSearchPathForDirectoriesInDomains"
     "(.documentDirectory, .userDomainMask, true)[0])\n"
@@ -83,6 +87,10 @@ def main():
 
     write_text_raw(target, text.replace(OLD, NEW))
     print("applied app group fallback to %s" % TARGET)
+    # Echo the result so a CI log shows exactly what the compiler will see.
+    for line in read_text_raw(target).split("\n"):
+        if "maybeAppGroupUrl" in line and "containerURL" in line:
+            print("  %s" % line.strip())
 
 
 if __name__ == "__main__":
