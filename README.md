@@ -45,7 +45,7 @@ Telegram-iOS — это Bazel-проект на десятки тысяч фай
 
 ```sh
 git clone https://github.com/TelegramMessenger/Telegram-iOS.git src
-git -C src checkout fa93715135f8d9e16ca098c9e0c35d7e370af6ff
+git -C src checkout 6ad963e5b62d354da79040f388ae2b9132fb17b8
 git -C src submodule update --init --recursive
 ./scripts/apply_mods.sh "$PWD/src"
 ```
