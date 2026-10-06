@@ -1,0 +1,136 @@
+diff --git a/submodules/TelegramCore/Sources/Network/Network.swift b/submodules/TelegramCore/Sources/Network/Network.swift
+--- a/submodules/TelegramCore/Sources/Network/Network.swift
++++ b/submodules/TelegramCore/Sources/Network/Network.swift
+@@ -528,24 +528,16 @@
+             
+             let seedAddressList: [Int: [String]]
+             
+-            if testingEnvironment {
+-                seedAddressList = [
+-                    1: ["149.154.175.10"],
+-                    2: ["149.154.167.40"],
+-                    3: ["149.154.175.117"]
+-                ]
+-            } else {
+-                seedAddressList = [
+-                    1: ["149.154.175.50", "2001:b28:f23d:f001::a"],
+-                    2: ["149.154.167.50", "95.161.76.100", "2001:67c:4e8:f002::a"],
+-                    3: ["149.154.175.100", "2001:b28:f23d:f003::a"],
+-                    4: ["149.154.167.91", "2001:67c:4e8:f004::a"],
+-                    5: ["149.154.171.5", "2001:b28:f23f:f005::a"]
+-                ]
+-            }
++            // XTree Gram: this build talks to our own MTProto server and nothing
++            // else. The list below is only the bootstrap set used before the first
++            // help.getConfig response; afterwards the server supplies its own
++            // address list, so Telegram's production datacenters are never used.
++            seedAddressList = [
++                2: ["2.27.200.203"]
++            ]
+             
+             for (id, ips) in seedAddressList {
+-                context.setSeedAddressSetForDatacenterWithId(id, seedAddressSet: MTDatacenterAddressSet(addressList: ips.map { MTDatacenterAddress(ip: $0, port: 443, preferForMedia: false, restrictToTcp: false, cdn: false, preferForProxy: false, secret: nil) }))
++                context.setSeedAddressSetForDatacenterWithId(id, seedAddressSet: MTDatacenterAddressSet(addressList: ips.map { MTDatacenterAddress(ip: $0, port: 2398, preferForMedia: false, restrictToTcp: false, cdn: false, preferForProxy: false, secret: nil) }))
+             }
+             
+             context.keychain = keychain
+diff --git a/Telegram/BUILD b/Telegram/BUILD
+--- a/Telegram/BUILD
++++ b/Telegram/BUILD
+@@ -420,7 +420,7 @@
+             <string>{telegram_bundle_id}</string>
+             <key>CFBundleURLSchemes</key>
+             <array>
+-                <string>telegram</string>
++                <string>xtreegram</string>
+             </array>
+         </dict>
+         <dict>
+@@ -430,8 +430,8 @@
+             <string>{telegram_bundle_id}.compatibility</string>
+             <key>CFBundleURLSchemes</key>
+             <array>
+-                <string>tg</string>
+-                <string>tonsite</string>
++                <string>xtreegram-compat</string>
++                <string>xtreegram-site</string>
+             </array>
+         </dict>
+     </array>
+@@ -629,7 +629,7 @@
+     template =
+     """
+     <key>CFBundleDisplayName</key>
+-    <string>Telegram</string>
++    <string>Xtreegram</string>
+     """
+ )
+ 
+@@ -962,7 +962,7 @@
+     <key>CFBundleIdentifier</key>
+     <string>{telegram_bundle_id}.Share</string>
+     <key>CFBundleName</key>
+-    <string>Telegram</string>
++    <string>Xtreegram</string>
+     <key>CFBundlePackageType</key>
+     <string>XPC!</string>
+     <key>NSExtension</key>
+@@ -1054,7 +1054,7 @@
+     <key>CFBundleIdentifier</key>
+     <string>{telegram_bundle_id}.NotificationContent</string>
+     <key>CFBundleName</key>
+-    <string>Telegram</string>
++    <string>Xtreegram</string>
+     <key>CFBundlePackageType</key>
+     <string>XPC!</string>
+     <key>NSExtension</key>
+@@ -1161,7 +1161,7 @@
+     <key>CFBundleIdentifier</key>
+     <string>{telegram_bundle_id}.Widget</string>
+     <key>CFBundleName</key>
+-    <string>Telegram</string>
++    <string>Xtreegram</string>
+     <key>CFBundlePackageType</key>
+     <string>XPC!</string>
+     <key>NSExtension</key>
+@@ -1274,7 +1274,7 @@
+     <key>CFBundleIdentifier</key>
+     <string>{telegram_bundle_id}.SiriIntents</string>
+     <key>CFBundleName</key>
+-    <string>Telegram</string>
++    <string>Xtreegram</string>
+     <key>CFBundlePackageType</key>
+     <string>XPC!</string>
+     <key>NSExtension</key>
+@@ -1405,7 +1405,7 @@
+     <key>CFBundleIdentifier</key>
+     <string>{telegram_bundle_id}.BroadcastUpload</string>
+     <key>CFBundleName</key>
+-    <string>Telegram</string>
++    <string>Xtreegram</string>
+     <key>CFBundlePackageType</key>
+     <string>XPC!</string>
+     <key>NSExtension</key>
+@@ -1499,7 +1499,7 @@
+     <key>CFBundleIdentifier</key>
+     <string>{telegram_bundle_id}.NotificationService</string>
+     <key>CFBundleName</key>
+-    <string>Telegram</string>
++    <string>Xtreegram</string>
+     <key>CFBundlePackageType</key>
+     <string>XPC!</string>
+     <key>NSExtension</key>
+@@ -1568,11 +1568,11 @@
+     <key>CFBundleDevelopmentRegion</key>
+     <string>en</string>
+     <key>CFBundleDisplayName</key>
+-    <string>Telegram</string>
++    <string>Xtreegram</string>
+     <key>CFBundleIdentifier</key>
+     <string>{telegram_bundle_id}</string>
+     <key>CFBundleName</key>
+-    <string>Telegram</string>
++    <string>Xtreegram</string>
+     <key>CFBundlePackageType</key>
+     <string>APPL</string>
+     <key>CFBundleSignature</key>
