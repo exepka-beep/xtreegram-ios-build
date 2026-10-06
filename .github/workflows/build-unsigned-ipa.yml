@@ -193,26 +193,21 @@ jobs:
               > "$SOURCE_DIR/build-system/fake-codesigning/profiles/${profile}.mobileprovision"
           done
 
-          # Drop dSYM generation: it roughly doubles build time and an unsigned
-          # sideload build has no use for symbol archives.
+          # dSYM generation used to be stripped out here to save build time, on
+          # the reasoning that an unsigned sideload build has no use for symbol
+          # archives. That was wrong, and it is why three crash reports in a row
+          # could only be read as raw offsets: upstream also builds with
+          # --objc_enable_binary_stripping, so the shipped framework carries no
+          # function names at all. Without the dSYM there is nothing left to
+          # symbolicate against. Keep it -- a symbol archive is the difference
+          # between guessing which function died and knowing.
           python3 - <<'PY'
           import pathlib
 
-          # Best effort: dropping dSYM roughly halves build time, but a missing
-          # marker must not fail the run -- the build itself is still valid.
           make_path = pathlib.Path("build-system/Make/Make.py")
           text = make_path.read_text()
-          original = text
           for marker in ("'--apple_generate_dsym',", "'--output_groups=+dsyms',"):
-              if marker not in text:
-                  print(f"note: marker not found, skipping dSYM trim: {marker}")
-          text = text.replace("                '--apple_generate_dsym',\n", "")
-          text = text.replace("                '--output_groups=+dsyms',\n", "")
-          if text != original:
-              make_path.write_text(text)
-              print("dSYM generation disabled")
-          else:
-              print("note: Make.py unchanged, dSYMs will still be generated")
+              print(f"dSYM flag present in Make.py: {marker} -> {marker in text}")
           PY
 
           python3 "$SOURCE_DIR/build-system/Make/ImportCertificates.py" --path "$SOURCE_DIR/build-system/fake-codesigning/certs"
@@ -333,9 +328,20 @@ jobs:
             /usr/bin/zip -q -r -y -9 "$OUTPUT_DIR/Xtreegram-unsigned.ipa" Payload
           )
 
+          # Make.py writes the symbol archive next to the IPA. Best effort: a
+          # missing dSYM must not fail the run, because the IPA itself is still
+          # a valid deliverable -- it just cannot be symbolicated afterwards.
+          if [[ -f "$ARTIFACTS_DIR/Telegram.DSYMs.zip" ]]; then
+            cp "$ARTIFACTS_DIR/Telegram.DSYMs.zip" "$OUTPUT_DIR/Telegram.DSYMs.zip"
+            echo "dSYM archive collected: $(du -h "$OUTPUT_DIR/Telegram.DSYMs.zip" | cut -f1)"
+          else
+            echo "note: no dSYM archive produced; crash logs will be unreadable" >&2
+            find "$SOURCE_DIR/build" -name '*.dSYM' -maxdepth 4 2>/dev/null || true
+          fi
+
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: Xtreegram-unsigned-ipa-${{ env.BUILD_NUMBER }}
-          path: ${{ runner.temp }}/artifacts/Xtreegram-unsigned.ipa
+          path: ${{ runner.temp }}/artifacts
           if-no-files-found: error
