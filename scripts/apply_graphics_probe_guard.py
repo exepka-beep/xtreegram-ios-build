@@ -33,9 +33,16 @@ per pixel and colour space. We never touched this file -- it is stock upstream.
 The fix here is deliberately boring: the same function already contains a
 working implementation for iOS 9 that does the identical job with
 `UIGraphicsBeginImageContextWithOptions` instead of `UIGraphicsImageRenderer`.
-Raising the availability gate to an iOS version that will never exist makes the
-compiler take that branch on every device, which removes the crashing call
-without inventing any new logic of our own.
+Making the condition pick that branch removes the crashing call without
+inventing any new logic of our own.
+
+The first attempt at this raised the gate to `#available(iOS 99.0, *)`, which
+looks harmless and is not: it makes the nested `#available(iOS 12.0, *)` inside
+the branch redundant, and Swift treats that as an **error**
+("unnecessary check for 'iOS'; enclosing scope ensures guard will always be
+true"). Build #16 died on it. The current version keeps the original iOS 10 gate
+and adds a runtime term the compiler cannot fold, which avoids the diagnostic
+entirely -- see the comment in REPLACEMENT.
 
 This is a hypothesis test, not a proven fix: if the graphics stack is broken
 for this install in general, the legacy path will fault somewhere else and we
@@ -55,14 +62,22 @@ ANCHOR = "    if #available(iOS 10.0, *) {\n        let opaqueFormat = UIGraphic
 
 REPLACEMENT = (
     "    // " + MARKER + ".\n"
-    "    // The iOS 10+ branch below builds a 1x1 image with UIGraphicsImageRenderer\n"
-    "    // and reads CGContext properties from inside its drawing block. On the\n"
-    "    // target device that drawing block is where the process dies, so take the\n"
-    "    // legacy branch instead: it does the same job with\n"
-    "    // UIGraphicsBeginImageContextWithOptions. 99.0 is a version that will never\n"
-    "    // exist, which is the least invasive way to make the compiler pick `else`\n"
-    "    // without deleting upstream code we might want back later.\n"
-    "    if #available(iOS 99.0, *) {\n"
+    "    // The branch below builds a 1x1 image with UIGraphicsImageRenderer and reads\n"
+    "    // CGContext properties from inside its drawing block. On the target device\n"
+    "    // that drawing block is where the process dies, so we take the legacy branch\n"
+    "    // instead: it does the same job with UIGraphicsBeginImageContextWithOptions.\n"
+    "    //\n"
+    "    // The condition is deliberately NOT an availability trick. Raising the gate to\n"
+    "    // an impossible iOS version (the first attempt) makes the nested\n"
+    "    // `#available(iOS 12.0, *)` further down redundant, and Swift reports that as\n"
+    "    // an error, not a warning: \"unnecessary check for 'iOS'; enclosing scope\n"
+    "    // ensures guard will always be true\". Keeping the original iOS 10 gate and\n"
+    "    // adding a runtime term sidesteps the diagnostic entirely -- the compiler\n"
+    "    // cannot fold an environment lookup, so nothing is provably dead. Default is\n"
+    "    // the legacy path; setting XT_IMAGERENDERER=1 in the scheme restores the\n"
+    "    // modern one for comparison.\n"
+    "    let xtreegramUseImageRendererProbe = ProcessInfo.processInfo.environment[\"XT_IMAGERENDERER\"] != nil\n"
+    "    if #available(iOS 10.0, *), xtreegramUseImageRendererProbe {\n"
     "        let opaqueFormat = UIGraphicsImageRendererFormat()\n"
 )
 
