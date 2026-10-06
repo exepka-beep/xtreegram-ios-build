@@ -7,7 +7,9 @@ if [[ $# -ne 1 ]]; then
 fi
 
 SOURCE_DIR="$1"
-PATCH_FILE="$(cd "$(dirname "$0")/.." && pwd)/patches/0001-xtreegram-branding-and-server.patch"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PATCH_FILE="$REPO_DIR/patches/0001-xtreegram-branding-and-server.patch"
 
 if [[ ! -d "$SOURCE_DIR/.git" ]]; then
   echo "Source dir is not a git repository: $SOURCE_DIR" >&2
@@ -29,3 +31,11 @@ else
   echo "Patch cannot be applied cleanly. Upstream may have changed." >&2
   git -C "$SOURCE_DIR" apply --check "$PATCH_FILE"
 fi
+
+# Source-level fixes that are plain string replacements rather than patches: the
+# lines around them carry trailing whitespace, which makes context-based diffs
+# fragile. Each script asserts it found exactly what it expects.
+#
+# The server RSA key is baked in by a separate workflow step instead, because the
+# key lives in config/ and may be refreshed without touching any code.
+python3 "$SCRIPT_DIR/apply_app_group_fallback.py" "$SOURCE_DIR"
