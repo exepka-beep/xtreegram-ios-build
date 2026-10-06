@@ -80,11 +80,21 @@ while IFS= read -r -d '' lproj_dir; do
   esac
 done < <(find "$APP_DIR" -type d -name "*.lproj" -print0)
 
+# Xtreegram: `xcrun strip -x` used to run over every Mach-O here, swallowing its
+# exit status with `|| true`. That was the only step in the whole pipeline that
+# rewrites code binaries after the build produced and signed them, and the crash
+# we are chasing is "the main thread jumps into unmapped memory" inside the
+# app's own frameworks — which is the classic symptom of a binary whose
+# signature no longer covers its contents. The binaries are now left exactly as
+# the build produced them. The count is still reported so the log keeps telling
+# us how many Mach-O files the bundle contains.
+macho_count=0
 while IFS= read -r -d '' file_path; do
   if LC_ALL=C file -b "$file_path" | grep -q "Mach-O"; then
-    xcrun strip -x "$file_path" >/dev/null 2>&1 || true
+    macho_count=$((macho_count + 1))
   fi
 done < <(find "$APP_DIR" -type f -print0)
+echo "Mach-O files left untouched (strip disabled): $macho_count"
 
 find "$APP_DIR" -type d -name "SC_Info" -prune -exec rm -rf {} +
 find "$APP_DIR" -type f -name ".DS_Store" -delete
