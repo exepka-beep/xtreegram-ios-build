@@ -16,17 +16,22 @@ on:
 
 jobs:
   build:
-    # Pinned on purpose. Upstream's versions.json declares macos: 15 / xcode: 16.2
-    # / bazel 7.3.1 for this commit, and that triple is the only combination it is
-    # known to build with. macos-latest now ships macOS 26 + Xcode 26.6, where
-    # Bazel 7.3.1's generated wrapped_clang aborts with
-    # "dyld: missing LC_UUID load command".
-    runs-on: macos-15
+    # macos-latest is macOS 26 arm64, which matches "macos": "26" in the pinned
+    # upstream versions.json. Its default Xcode (26.6) shares a major version with
+    # the declared 26.2, so the Xcode selection step keeps the image default and
+    # Bazel's resolved SDK stays in sync with xcrun inside the actions.
+    #
+    # Do not pin this back to macos-15: that image's default Xcode is 16.4, whose
+    # Swift rejects the TARGET_OS_* macros this codebase used back then, while its
+    # Xcode 16.2 disagrees with xcrun about the iOS SDK version. The current
+    # upstream compiles cleanly against the current toolchain.
+    runs-on: macos-latest
     timeout-minutes: 720
     env:
-      # Pinned upstream commit. The patch in patches/ is written against exactly
-      # this revision; bump both together or the apply step will refuse to run.
-      UPSTREAM_REF: fa93715135f8d9e16ca098c9e0c35d7e370af6ff
+      # Pinned upstream commit (Telegram 12.9.2). The patch in patches/ is written
+      # against exactly this revision; bump both together or the apply step refuses
+      # to run. Verified locally: applies with no fuzz and no offsets.
+      UPSTREAM_REF: 6ad963e5b62d354da79040f388ae2b9132fb17b8
 
       # XTree Gram branding, applied to the built product.
       CUSTOM_APP_NAME: Xtreegram
