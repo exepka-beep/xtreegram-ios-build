@@ -44,3 +44,12 @@ python3 "$SCRIPT_DIR/apply_app_group_fallback.py" "$SOURCE_DIR"
 # literal in BuildConfig.m, which is an instant SIGABRT. Included here so a
 # sideloaded build does not die before it can even reach the login screen.
 python3 "$SCRIPT_DIR/apply_buildconfig_guard.py" "$SOURCE_DIR"
+
+# ImageIO faults inside __PNGReadPlugin while decoding the loose PNG textures
+# of the first-run intro, killing the app ~40 ms after launch. The textures are
+# decorative, so skip loading them.
+python3 "$SCRIPT_DIR/apply_intro_texture_guard.py" "$SOURCE_DIR"
+
+# Because of the line above the intro no longer draws its sprites, so make sure
+# its "Start Messaging" button is not the only way past the first screen.
+python3 "$SCRIPT_DIR/apply_splash_auto_advance.py" "$SOURCE_DIR"
