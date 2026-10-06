@@ -47,7 +47,7 @@ into function names instead of raw offsets.
 import os
 import sys
 
-TARGET = os.path.join("submodules", "Display", "Sources", "GenerateImage.swift")
+TARGET = os.path.join("submodules", "Display", "Source", "GenerateImage.swift")
 
 MARKER = "Xtreegram: legacy graphics context probe"
 
@@ -72,6 +72,15 @@ def main():
         raise SystemExit("usage: apply_graphics_probe_guard.py <source_dir>")
 
     path = os.path.join(sys.argv[1], TARGET)
+    if not os.path.isfile(path):
+        # Build #15 died here with a bare FileNotFoundError because TARGET said
+        # `Sources` where upstream has `Source`. Say what is wrong in one line,
+        # and say how to check it, instead of dumping a traceback into the log.
+        raise SystemExit(
+            "graphics probe guard: file not found: %s\n"
+            "  Upstream layout may have changed. Verify with:\n"
+            "  https://api.github.com/repos/TelegramMessenger/Telegram-iOS/contents/%s?ref=%s"
+            % (path, TARGET.replace(os.sep, "/"), os.environ.get("UPSTREAM_REF", "<pinned ref>")))
     with open(path, "rb") as f:
         raw = f.read()
 
