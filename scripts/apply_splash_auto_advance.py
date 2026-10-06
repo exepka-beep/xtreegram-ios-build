@@ -52,7 +52,7 @@ APPEAR_INSERT = (
     "        // Xtreegram: the intro is decorative, and its texture load is disabled\n"
     "        // on this build, so never let it become a dead end -- if the user has\n"
     "        // not pressed \"Start Messaging\" after a few seconds, continue anyway.\n"
-    "        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) { [weak self] in\n"
+    "        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in\n"
     "            guard let strongSelf = self, !strongSelf.xtreegramDidActivateLocalization else {\n"
     "                return\n"
     "            }\n"
