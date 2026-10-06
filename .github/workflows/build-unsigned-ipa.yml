@@ -269,6 +269,15 @@ jobs:
           new_bundle = os.environ["CUSTOM_BUNDLE_ID"]
           new_scheme = os.environ["CUSTOM_URL_SCHEME"]
 
+          # Put the build number where a human can actually see it. iOS shows
+          # CFBundleDisplayName in Settings, but for the version it only ever
+          # shows CFBundleShortVersionString -- so every build of ours reported
+          # "12.9.2" and there was no way to tell an old install from a new one
+          # before the app was running. That ambiguity cost two rounds of
+          # "did the new build actually get installed?".
+          build_number = os.environ.get("BUILD_NUMBER", "").strip()
+          display_name = ("%s %s" % (app_name, build_number)).strip() if build_number else app_name
+
           def transform(value):
               if isinstance(value, str):
                   return value.replace(old_bundle, new_bundle)
@@ -297,8 +306,8 @@ jobs:
               data = transform(data)
 
               if plist_path == app_dir / "Info.plist":
-                  data["CFBundleDisplayName"] = app_name
-                  data["CFBundleName"] = app_name
+                  data["CFBundleDisplayName"] = display_name
+                  data["CFBundleName"] = display_name
                   url_types = data.get("CFBundleURLTypes")
                   if isinstance(url_types, list):
                       for entry in url_types:
