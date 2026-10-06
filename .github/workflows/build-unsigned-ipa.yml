@@ -59,7 +59,9 @@ jobs:
       - name: Apply XTree Gram patch
         run: |
           set -euxo pipefail
-          "$GITHUB_WORKSPACE/scripts/apply_mods.sh" "$RUNNER_TEMP/telegram-ios"
+          # Invoked through bash on purpose: files added over the GitHub contents
+          # API land as mode 100644, so the shebang alone is not enough.
+          bash "$GITHUB_WORKSPACE/scripts/apply_mods.sh" "$RUNNER_TEMP/telegram-ios"
 
       - name: Set active Xcode version
         run: |
@@ -124,14 +126,21 @@ jobs:
           python3 - <<'PY'
           import pathlib
 
+          # Best effort: dropping dSYM roughly halves build time, but a missing
+          # marker must not fail the run -- the build itself is still valid.
           make_path = pathlib.Path("build-system/Make/Make.py")
           text = make_path.read_text()
+          original = text
           for marker in ("'--apple_generate_dsym',", "'--output_groups=+dsyms',"):
               if marker not in text:
-                  raise SystemExit(f"Expected marker not found: {marker}")
+                  print(f"note: marker not found, skipping dSYM trim: {marker}")
           text = text.replace("                '--apple_generate_dsym',\n", "")
           text = text.replace("                '--output_groups=+dsyms',\n", "")
-          make_path.write_text(text)
+          if text != original:
+              make_path.write_text(text)
+              print("dSYM generation disabled")
+          else:
+              print("note: Make.py unchanged, dSYMs will still be generated")
           PY
 
           python3 "$SOURCE_DIR/build-system/Make/ImportCertificates.py" --path "$SOURCE_DIR/build-system/fake-codesigning/certs"
@@ -239,7 +248,7 @@ jobs:
 
           PY
 
-          "$GITHUB_WORKSPACE/scripts/slim_ipa.sh" "$WORK_DIR"
+          bash "$GITHUB_WORKSPACE/scripts/slim_ipa.sh" "$WORK_DIR"
 
           # Strip every signature artefact so the archive is honestly unsigned and
           # Sideloadly/AltStore can re-sign it with the installer's own Apple ID.
