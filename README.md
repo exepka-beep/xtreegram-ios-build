@@ -7,8 +7,11 @@
 
 ## Скачать готовый `.ipa`
 
-**[Xtreegram-unsigned-12.9.2.ipa](https://github.com/exepka-beep/xtreegram-ios-build/releases/download/v12.9.2/Xtreegram-unsigned-12.9.2.ipa)** (71 МБ, arm64, iOS 13+)
+**[Xtreegram-unsigned-12.9.2-rsa.ipa](https://github.com/exepka-beep/xtreegram-ios-build/releases/download/v12.9.2/Xtreegram-unsigned-12.9.2-rsa.ipa)** (71.6 МБ, arm64, iOS 13+)
 · [страница релиза](https://github.com/exepka-beep/xtreegram-ios-build/releases/tag/v12.9.2)
+
+Ставить нужно файл с суффиксом `-rsa`: в нём серверный RSA-ключ вшит в клиент. Сборка без суффикса
+зависает на чёрном экране при запуске.
 
 Ссылка работает без входа в аккаунт. Вложения релиза не истекают, в отличие от артефактов Actions
 (те живут 90 дней и требуют авторизации).
@@ -26,10 +29,33 @@ Telegram-iOS — это Bazel-проект на десятки тысяч фай
 
 | Файл | Что делает |
 | --- | --- |
-| `.github/workflows/build-unsigned-ipa.yml` | Весь конвейер: клон upstream → патч → Xcode → сборка → чистка → zip |
-| `scripts/apply_mods.sh` | Накладывает патч (сначала `--check`, чтобы устаревший патч падал громко) |
+| `.github/workflows/build-unsigned-ipa.yml` | Весь конвейер: клон upstream → патч → ключ → Xcode → сборка → чистка → zip |
+| `scripts/apply_mods.sh` | Накладывает патч (сначала `--check`, чтобы устаревший патч падал громко) и запускает фикс App Group |
+| `scripts/apply_rsa_key.py` | Вшивает наш серверный публичный ключ в `defaultPublicKeys()` |
+| `scripts/apply_app_group_fallback.py` | Учит клиент работать без App Group (его не даёт бесплатный Apple ID) |
 | `scripts/slim_ipa.sh` | Выкидывает лишние расширения, локали, символы |
 | `patches/0001-xtreegram-branding-and-server.patch` | Брендинг + адрес сервера |
+| `config/server-rsa-public.pem` | Публичный RSA-ключ нашего сервера |
+
+## Два подводных камня самосборки
+
+Их нет в обычной сборке Telegram, потому что она ходит на настоящие ДЦ Telegram со штатными ключами.
+Оба проявляются **чёрным экраном при запуске**.
+
+**1. App Group.** `AppDelegate` берёт общий контейнер `group.<bundle id>`. Для него нужно право
+`com.apple.security.application-groups`, которого у бесплатного Apple ID нет — а в неподписанном IPA
+прав нет вообще, поэтому Sideloadly их и не сохраняет. Дальше срабатывает `guard let appGroupUrl …
+else { алерт «Error 2»; return true }`, алерт показать некуда (root-контроллера ещё нет), и приложение
+остаётся с пустым окном. Фикс — фолбэк в собственный Documents.
+
+**2. RSA-ключ сервера.** MTProto-рукопожатие проходит только если клиент знает ключ, чей отпечаток
+сервер объявляет в `resPQ`. У нас свой ключ → `0x9dbe5a4c45febeff`, у Telegram штатные →
+`0xb25898df208d2603` и `0xd09d1d85de64fd85`. Без подмены `selectPublicKey()` возвращает nil и логин
+не проходит никогда.
+
+Если на сервере пересоздать RSA-ключ (`TELESRV_RSA_IDENTITY_MODE=generated` или удалить файл ключа),
+отпечаток изменится — обнови `config/server-rsa-public.pem` и пересобери, иначе **все** клиенты
+перестанут подключаться.
 
 ## Что меняет патч
 
