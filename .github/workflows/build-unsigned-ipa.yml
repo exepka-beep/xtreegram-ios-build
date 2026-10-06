@@ -74,19 +74,31 @@ jobs:
           SOURCE_DIR="$RUNNER_TEMP/telegram-ios"
           XCODE_VERSION=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["xcode"])' "$SOURCE_DIR/versions.json")
           XCODE_MAJOR="${XCODE_VERSION%%.*}"
-          echo "versions.json wants Xcode $XCODE_VERSION (major $XCODE_MAJOR)"
+          DEFAULT_XCODE="/Applications/Xcode.app/Contents/Developer"
+          DEFAULT_VERSION=""
+          if [[ -d "$DEFAULT_XCODE" ]]; then
+            DEFAULT_VERSION="$("$DEFAULT_XCODE/usr/bin/xcodebuild" -version 2>/dev/null | awk '/^Xcode/{print $2}')"
+          fi
+          echo "versions.json wants Xcode $XCODE_VERSION (major $XCODE_MAJOR); image default is ${DEFAULT_VERSION:-none}"
           ls -d /Applications/Xcode*.app || true
 
-          # The exact declared version wins. The image's default Xcode is a newer
-          # minor (16.4), and Telegram's Bazel setup is sensitive to that, so do
-          # not fall back to it while 16.2 is present.
           SELECTED_DEVELOPER=""
-          if [[ -d "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer/Platforms/iPhoneOS.platform" ]]; then
+
+          # Prefer the image default as long as its major version matches the one
+          # upstream declares. Picking a different *minor* is what broke the build:
+          # Bazel configured its toolchain from the selected 16.2 (SDK 18.2) while
+          # xcrun inside the action resolved the default 16.4 (SDK 18.5), so ibtool
+          # reported "iOS 18.2 Platform Not Installed". The image ships the default
+          # Xcode completely, so let both sides agree on it.
+          if [[ -n "$DEFAULT_VERSION" && "${DEFAULT_VERSION%%.*}" == "$XCODE_MAJOR" ]]; then
+            SELECTED_DEVELOPER="$DEFAULT_XCODE"
+          fi
+
+          if [[ -z "$SELECTED_DEVELOPER" && -d "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer/Platforms/iPhoneOS.platform" ]]; then
             SELECTED_DEVELOPER="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
           fi
 
           if [[ -z "$SELECTED_DEVELOPER" ]]; then
-            echo "Exact Xcode $XCODE_VERSION not found, falling back to major $XCODE_MAJOR" >&2
             for candidate in /Applications/Xcode_${XCODE_MAJOR}.*.app/Contents/Developer; do
               if [[ -d "$candidate/Platforms/iPhoneOS.platform" ]]; then
                 SELECTED_DEVELOPER="$candidate"
@@ -94,30 +106,26 @@ jobs:
             done
           fi
 
-          if [[ -z "$SELECTED_DEVELOPER" && -d "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform" ]]; then
-            echo "Falling back to the image default Xcode" >&2
-            SELECTED_DEVELOPER="/Applications/Xcode.app/Contents/Developer"
-          fi
-
           if [[ -z "$SELECTED_DEVELOPER" ]]; then
-            echo "No installed Xcode has iPhoneOS.platform" >&2
+            echo "No installed Xcode has a usable iOS platform" >&2
             exit 1
           fi
 
           echo "Using Xcode developer dir: $SELECTED_DEVELOPER"
           sudo xcode-select -s "$SELECTED_DEVELOPER"
           xcodebuild -version
+          echo "--- iphoneos SDK in use ---"
+          xcrun --sdk iphoneos --show-sdk-version || true
+          xcrun --sdk iphoneos --show-sdk-path || true
 
       - name: Free disk space
         run: |
           set -euxo pipefail
           echo "--- before ---"
           df -h /
-          # A Telegram-iOS Bazel build needs tens of GB, and the macOS runner's
-          # root volume is small. Only caches and simulator runtimes are removed:
-          # this build targets real devices, so the runtimes are never used.
-          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/* || true
-          sudo rm -rf ~/Library/Developer/CoreSimulator/Caches || true
+          # Only caches are dropped. Simulator runtimes are deliberately left
+          # alone: removing them measured as freeing nothing on this image while
+          # risking a missing iOS platform for ibtool.
           sudo rm -rf ~/Library/Developer/Xcode/DerivedData || true
           rm -rf ~/.cache/* || true
           echo "--- after ---"
