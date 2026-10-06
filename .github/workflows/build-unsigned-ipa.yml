@@ -42,7 +42,12 @@ jobs:
       IPA_KEEP_LOCALES: Base,en,ru
 
       # Extensions removed to keep the unsigned IPA small enough to sideload.
-      IPA_DROP_PLUGINS: Watch,Widget,BroadcastUpload,Share
+      #
+      # Notification/Intents are dropped as well: every extension needs its own
+      # provisioning profile, and a free Apple ID can neither grant the App Group
+      # they all read from nor provision that many App IDs. Leaving them in makes
+      # Sideloadly fail, and Xtreegram does not use them anyway.
+      IPA_DROP_PLUGINS: Watch,Widget,BroadcastUpload,Share,Notification,Intents
 
     steps:
       - name: Checkout this repository
