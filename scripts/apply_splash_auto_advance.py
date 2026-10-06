@@ -119,7 +119,7 @@ def main():
 
     print("splash auto-advance: applied")
     print("  %s" % TARGET)
-    print("  splash now continues on its own after 8s if the button is not pressed")
+    print("  splash now continues on its own after 3s if the button is not pressed")
     return 0
 
 
