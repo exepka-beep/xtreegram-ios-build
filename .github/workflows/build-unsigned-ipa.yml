@@ -73,6 +73,23 @@ jobs:
           # API land as mode 100644, so the shebang alone is not enough.
           bash "$GITHUB_WORKSPACE/scripts/apply_mods.sh" "$RUNNER_TEMP/telegram-ios"
 
+      - name: Bake in the server RSA public key
+        run: |
+          set -euxo pipefail
+          # The MTProto handshake only completes when the client knows a public
+          # key whose fingerprint our server advertises in resPQ. The two stock
+          # Telegram keys in MtProtoKit can never match a self-hosted telesrv, so
+          # selectPublicKey() returns nil, req_DH_params is never sent and the
+          # app stays on the launch screen forever (black in dark mode). This
+          # rewrites both entries of defaultPublicKeys() with our own key.
+          #
+          # If the server RSA identity is ever regenerated (mode "generated", or
+          # the key file deleted), refresh config/server-rsa-public.pem and
+          # rebuild — otherwise no client can authenticate any more.
+          python3 "$GITHUB_WORKSPACE/scripts/apply_rsa_key.py" \
+            "$RUNNER_TEMP/telegram-ios" \
+            "$GITHUB_WORKSPACE/config/server-rsa-public.pem"
+
       - name: Set active Xcode version
         run: |
           set -euxo pipefail
