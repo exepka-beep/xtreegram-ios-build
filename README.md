@@ -7,11 +7,11 @@
 
 ## Скачать готовый `.ipa`
 
-**[Xtreegram-unsigned-12.9.2-rsa.ipa](https://github.com/exepka-beep/xtreegram-ios-build/releases/download/v12.9.2/Xtreegram-unsigned-12.9.2-rsa.ipa)** (71.6 МБ, arm64, iOS 13+)
+**[Xtreegram-unsigned-12.9.2.ipa](https://github.com/exepka-beep/xtreegram-ios-build/releases/download/v12.9.2/Xtreegram-unsigned-12.9.2.ipa)** (71.1 МБ, arm64, iOS 13+)
 · [страница релиза](https://github.com/exepka-beep/xtreegram-ios-build/releases/tag/v12.9.2)
 
-Ставить нужно файл с суффиксом `-rsa`: в нём серверный RSA-ключ вшит в клиент. Сборка без суффикса
-зависает на чёрном экране при запуске.
+Сборка от 6 октября 2026, в ней исправлены оба дефекта самосборки: App Group и RSA-ключ сервера
+(подробности ниже). Предыдущие сборки удалены — они зависали на чёрном экране.
 
 Ссылка работает без входа в аккаунт. Вложения релиза не истекают, в отличие от артефактов Actions
 (те живут 90 дней и требуют авторизации).
