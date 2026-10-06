@@ -169,7 +169,13 @@ jobs:
           BUILD_NUMBER_OFFSET="$(cat "$SOURCE_DIR/build_number_offset")"
           APP_VERSION="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["app"])' "$SOURCE_DIR/versions.json")"
           COMMIT_COUNT="$(git -C "$SOURCE_DIR" rev-list --count HEAD)"
-          BUILD_NUMBER="$((COMMIT_COUNT + BUILD_NUMBER_OFFSET))"
+          # Upstream derives CFBundleVersion purely from the commit count, so every
+          # build of the same pinned revision reports the same number (34474 for the
+          # current pin) and two of our builds cannot be told apart on the device.
+          # Shift it into our own range so each iteration is identifiable in
+          # Settings -> General -> iPhone Storage.
+          XTREEGRAM_BUILD_BASE=900000
+          BUILD_NUMBER="$((XTREEGRAM_BUILD_BASE + COMMIT_COUNT + BUILD_NUMBER_OFFSET))"
           BAZEL_CACHE_DIR="$RUNNER_TEMP/bazel-disk-cache"
           mkdir -p "$BAZEL_CACHE_DIR"
 
