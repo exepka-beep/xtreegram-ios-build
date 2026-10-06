@@ -10,14 +10,9 @@ name: Build XTree Gram Unsigned IPA
 # reproducible because UPSTREAM_REF pins the exact commit the patch was written for.
 
 on:
+  # Manual only on purpose: a single run costs 60-90 runner minutes, so it must
+  # never start as a side effect of pushing a commit.
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "patches/**"
-      - "scripts/**"
-      - ".github/workflows/build-unsigned-ipa.yml"
 
 jobs:
   build:
@@ -161,14 +156,30 @@ jobs:
           WORK_DIR="$RUNNER_TEMP/xtreegram-ipa-work"
           mkdir -p "$OUTPUT_DIR"
 
-          if [[ ! -f "$ARTIFACTS_DIR/Telegram.ipa" ]]; then
-            echo "No IPA produced at $ARTIFACTS_DIR/Telegram.ipa" >&2
+          # The IPA name follows the app name in the configuration used above, but
+          # Make.py versions differ on where they drop it -- look for any IPA
+          # rather than betting on one path.
+          IPA_PATH=""
+          for candidate in "$ARTIFACTS_DIR/Telegram.ipa" "$ARTIFACTS_DIR"/*.ipa; do
+            if [[ -f "$candidate" ]]; then
+              IPA_PATH="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$IPA_PATH" ]]; then
+            echo "No IPA produced. Searching the source tree..." >&2
+            IPA_PATH="$(find "$SOURCE_DIR/build" -name '*.ipa' -type f -print -quit 2>/dev/null || true)"
+          fi
+          if [[ -z "$IPA_PATH" ]]; then
+            echo "No IPA found anywhere under $SOURCE_DIR/build" >&2
+            ls -la "$SOURCE_DIR/build" 2>/dev/null || true
             exit 1
           fi
+          echo "Using IPA: $IPA_PATH"
 
           rm -rf "$WORK_DIR"
           mkdir -p "$WORK_DIR"
-          ditto -x -k "$ARTIFACTS_DIR/Telegram.ipa" "$WORK_DIR"
+          ditto -x -k "$IPA_PATH" "$WORK_DIR"
 
           export WORK_DIR
           python3 - <<'PY'
