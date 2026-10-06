@@ -1,0 +1,249 @@
+name: Build XTree Gram Unsigned IPA
+
+# Builds an unsigned iOS .ipa of the XTree Gram client from upstream Telegram-iOS.
+# The output is intentionally unsigned: it is meant to be signed at install time
+# with a free Apple ID via Sideloadly / AltStore / 3uTools.
+#
+# Why this repository contains only patches instead of a full fork: upstream
+# Telegram-iOS is a Bazel project of tens of thousands of files. Keeping just the
+# diff means every upstream change is a one-line bump here, and the checkout stays
+# reproducible because UPSTREAM_REF pins the exact commit the patch was written for.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "patches/**"
+      - "scripts/**"
+      - ".github/workflows/build-unsigned-ipa.yml"
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 720
+    env:
+      # Pinned upstream commit. The patch in patches/ is written against exactly
+      # this revision; bump both together or the apply step will refuse to run.
+      UPSTREAM_REF: fa93715135f8d9e16ca098c9e0c35d7e370af6ff
+
+      # XTree Gram branding, applied to the built product.
+      CUSTOM_APP_NAME: Xtreegram
+      CUSTOM_BUNDLE_ID: com.xtreegram.messenger
+      CUSTOM_URL_SCHEME: xtreegram
+
+      # Locales kept in the shipped IPA. Russian is required for the target users.
+      IPA_KEEP_LOCALES: Base,en,ru
+
+      # Extensions removed to keep the unsigned IPA small enough to sideload.
+      IPA_DROP_PLUGINS: Watch,Widget,BroadcastUpload,Share
+
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+
+      - name: Restore Bazel disk cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/bazel-disk-cache
+          # Keyed on the pinned upstream ref, not on github.sha: every run builds
+          # the very same source, so a per-commit key would never restore anything.
+          key: bazel-disk-cache-${{ runner.os }}-${{ env.UPSTREAM_REF }}-v1
+          restore-keys: |
+            bazel-disk-cache-${{ runner.os }}-${{ env.UPSTREAM_REF }}-
+
+      - name: Clone upstream Telegram iOS
+        run: |
+          set -euxo pipefail
+          git clone -j8 --filter=blob:none https://github.com/TelegramMessenger/Telegram-iOS.git "$RUNNER_TEMP/telegram-ios"
+          git -C "$RUNNER_TEMP/telegram-ios" checkout "$UPSTREAM_REF"
+          git -C "$RUNNER_TEMP/telegram-ios" submodule sync --recursive
+          git -C "$RUNNER_TEMP/telegram-ios" submodule update --init --recursive --jobs 8
+
+      - name: Apply XTree Gram patch
+        run: |
+          set -euxo pipefail
+          "$GITHUB_WORKSPACE/scripts/apply_mods.sh" "$RUNNER_TEMP/telegram-ios"
+
+      - name: Set active Xcode version
+        run: |
+          set -euxo pipefail
+          SOURCE_DIR="$RUNNER_TEMP/telegram-ios"
+          XCODE_VERSION=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["xcode"])' "$SOURCE_DIR/versions.json")
+          PREFERRED="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+          DEFAULT_XCODE="/Applications/Xcode.app/Contents/Developer"
+
+          if [[ -d "$DEFAULT_XCODE/Platforms/iPhoneOS.platform" ]]; then
+            SELECTED_DEVELOPER="$DEFAULT_XCODE"
+          elif [[ -d "$PREFERRED/Platforms/iPhoneOS.platform" ]]; then
+            SELECTED_DEVELOPER="$PREFERRED"
+          else
+            SELECTED_DEVELOPER=""
+            for candidate in /Applications/Xcode_*.app/Contents/Developer; do
+              if [[ -d "$candidate/Platforms/iPhoneOS.platform" ]]; then
+                SELECTED_DEVELOPER="$candidate"
+              fi
+            done
+            if [[ -z "$SELECTED_DEVELOPER" ]]; then
+              echo "No installed Xcode has iPhoneOS.platform" >&2
+              exit 1
+            fi
+          fi
+
+          echo "Using Xcode developer dir: $SELECTED_DEVELOPER"
+          sudo xcode-select -s "$SELECTED_DEVELOPER"
+          xcodebuild -version
+
+      - name: Build unsigned IPA
+        env:
+          BAZEL_USER_ROOT: /private/var/tmp/_bazel_containerhost
+        run: |
+          set -euxo pipefail
+          SOURCE_DIR="$RUNNER_TEMP/telegram-ios"
+          cd "$SOURCE_DIR"
+
+          BUILD_NUMBER_OFFSET="$(cat "$SOURCE_DIR/build_number_offset")"
+          APP_VERSION="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["app"])' "$SOURCE_DIR/versions.json")"
+          COMMIT_COUNT="$(git -C "$SOURCE_DIR" rev-list --count HEAD)"
+          BUILD_NUMBER="$((COMMIT_COUNT + BUILD_NUMBER_OFFSET))"
+          BAZEL_CACHE_DIR="$RUNNER_TEMP/bazel-disk-cache"
+          mkdir -p "$BAZEL_CACHE_DIR"
+
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+
+          # The bundled fake-codesigning profiles expire over time. Refresh them
+          # from the latest upstream branch so an old pinned commit still builds.
+          LATEST_PROFILE_REF="origin/master"
+          if ! git -C "$SOURCE_DIR" rev-parse --verify "$LATEST_PROFILE_REF" >/dev/null 2>&1; then
+            LATEST_PROFILE_REF="origin/main"
+          fi
+          for profile in Telegram Intents NotificationContent NotificationService Share WatchApp WatchExtension Widget BroadcastUpload; do
+            git -C "$SOURCE_DIR" show "$LATEST_PROFILE_REF:build-system/fake-codesigning/profiles/${profile}.mobileprovision" \
+              > "$SOURCE_DIR/build-system/fake-codesigning/profiles/${profile}.mobileprovision"
+          done
+
+          # Drop dSYM generation: it roughly doubles build time and an unsigned
+          # sideload build has no use for symbol archives.
+          python3 - <<'PY'
+          import pathlib
+
+          make_path = pathlib.Path("build-system/Make/Make.py")
+          text = make_path.read_text()
+          for marker in ("'--apple_generate_dsym',", "'--output_groups=+dsyms',"):
+              if marker not in text:
+                  raise SystemExit(f"Expected marker not found: {marker}")
+          text = text.replace("                '--apple_generate_dsym',\n", "")
+          text = text.replace("                '--output_groups=+dsyms',\n", "")
+          make_path.write_text(text)
+          PY
+
+          python3 "$SOURCE_DIR/build-system/Make/ImportCertificates.py" --path "$SOURCE_DIR/build-system/fake-codesigning/certs"
+
+          python3 -u "$SOURCE_DIR/build-system/Make/Make.py" \
+            --bazelUserRoot="$BAZEL_USER_ROOT" \
+            --overrideXcodeVersion \
+            --cacheDir="$BAZEL_CACHE_DIR" \
+            build \
+            --configurationPath="$SOURCE_DIR/build-system/appstore-configuration.json" \
+            --codesigningInformationPath="$SOURCE_DIR/build-system/fake-codesigning" \
+            --configuration=release_arm64 \
+            --outputBuildArtifactsPath="$SOURCE_DIR/build/artifacts" \
+            --buildNumber="$BUILD_NUMBER"
+
+      - name: Collect artifacts
+        run: |
+          set -euxo pipefail
+          SOURCE_DIR="$RUNNER_TEMP/telegram-ios"
+          OUTPUT_DIR="$RUNNER_TEMP/artifacts"
+          ARTIFACTS_DIR="$SOURCE_DIR/build/artifacts"
+          WORK_DIR="$RUNNER_TEMP/xtreegram-ipa-work"
+          mkdir -p "$OUTPUT_DIR"
+
+          if [[ ! -f "$ARTIFACTS_DIR/Telegram.ipa" ]]; then
+            echo "No IPA produced at $ARTIFACTS_DIR/Telegram.ipa" >&2
+            exit 1
+          fi
+
+          rm -rf "$WORK_DIR"
+          mkdir -p "$WORK_DIR"
+          ditto -x -k "$ARTIFACTS_DIR/Telegram.ipa" "$WORK_DIR"
+
+          export WORK_DIR
+          python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+
+          work_dir = Path(os.environ["WORK_DIR"])
+          app_name = os.environ["CUSTOM_APP_NAME"]
+          old_bundle = "ph.telegra.Telegraph"
+          new_bundle = os.environ["CUSTOM_BUNDLE_ID"]
+          new_scheme = os.environ["CUSTOM_URL_SCHEME"]
+
+          def transform(value):
+              if isinstance(value, str):
+                  return value.replace(old_bundle, new_bundle)
+              if isinstance(value, list):
+                  return [transform(v) for v in value]
+              if isinstance(value, dict):
+                  return {k: transform(v) for k, v in value.items()}
+              return value
+
+          payload_dir = work_dir / "Payload"
+          app_dirs = list(payload_dir.glob("*.app"))
+          if len(app_dirs) != 1:
+              raise SystemExit(f"Expected exactly one .app in Payload, found: {app_dirs}")
+
+          app_dir = app_dirs[0]
+          plist_files = [app_dir / "Info.plist"]
+          plist_files.extend(app_dir.glob("PlugIns/*.appex/Info.plist"))
+          plist_files.extend(app_dir.glob("Frameworks/*.framework/Info.plist"))
+
+          for plist_path in plist_files:
+              if not plist_path.exists():
+                  continue
+              with plist_path.open("rb") as f:
+                  data = plistlib.load(f)
+
+              data = transform(data)
+
+              if plist_path == app_dir / "Info.plist":
+                  data["CFBundleDisplayName"] = app_name
+                  data["CFBundleName"] = app_name
+                  url_types = data.get("CFBundleURLTypes")
+                  if isinstance(url_types, list):
+                      for entry in url_types:
+                          if not isinstance(entry, dict):
+                              continue
+                          schemes = entry.get("CFBundleURLSchemes")
+                          if isinstance(schemes, list):
+                              entry["CFBundleURLSchemes"] = [
+                                  new_scheme if s in ("telegram", "tg", "tonsite") else s for s in schemes
+                              ]
+
+              with plist_path.open("wb") as f:
+                  plistlib.dump(data, f, sort_keys=False)
+
+          PY
+
+          "$GITHUB_WORKSPACE/scripts/slim_ipa.sh" "$WORK_DIR"
+
+          # Strip every signature artefact so the archive is honestly unsigned and
+          # Sideloadly/AltStore can re-sign it with the installer's own Apple ID.
+          find "$WORK_DIR/Payload" -type d -name "_CodeSignature" -prune -exec rm -rf {} +
+          find "$WORK_DIR/Payload" -type f -name "embedded.mobileprovision" -delete
+
+          rm -f "$OUTPUT_DIR/Xtreegram-unsigned.ipa"
+          (
+            cd "$WORK_DIR"
+            /usr/bin/zip -q -r -y -9 "$OUTPUT_DIR/Xtreegram-unsigned.ipa" Payload
+          )
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xtreegram-unsigned-ipa-${{ env.BUILD_NUMBER }}
+          path: ${{ runner.temp }}/artifacts/Xtreegram-unsigned.ipa
+          if-no-files-found: error
