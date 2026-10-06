@@ -58,3 +58,10 @@ python3 "$SCRIPT_DIR/apply_intro_disable.py" "$SOURCE_DIR"
 # Because of the two lines above the intro no longer draws anything, so make sure
 # its "Start Messaging" button is not the only way past the first screen.
 python3 "$SCRIPT_DIR/apply_splash_auto_advance.py" "$SOURCE_DIR"
+
+# And the crash that survived both of those. The stack lands inside the 1x1
+# UIGraphicsImageRenderer probe in Display/Source/GenerateImage.swift that
+# detects the device's graphics-context parameters -- stock upstream code we
+# never touched. Route it onto the legacy branch that already exists in the same
+# function instead.
+python3 "$SCRIPT_DIR/apply_graphics_probe_guard.py" "$SOURCE_DIR"
