@@ -39,3 +39,8 @@ fi
 # The server RSA key is baked in by a separate workflow step instead, because the
 # key lives in config/ and may be refreshed without touching any code.
 python3 "$SCRIPT_DIR/apply_app_group_fallback.py" "$SOURCE_DIR"
+
+# Not a sideload workaround: an unguarded NULL inserted into an NSDictionary
+# literal in BuildConfig.m, which is an instant SIGABRT. Included here so a
+# sideloaded build does not die before it can even reach the login screen.
+python3 "$SCRIPT_DIR/apply_buildconfig_guard.py" "$SOURCE_DIR"
