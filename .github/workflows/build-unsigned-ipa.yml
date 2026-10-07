@@ -201,13 +201,47 @@ jobs:
           # function names at all. Without the dSYM there is nothing left to
           # symbolicate against. Keep it -- a symbol archive is the difference
           # between guessing which function died and knowing.
+          #
+          # And the second half of the same problem: --objc_enable_binary_stripping
+          # itself. The crash in #17 is
+          #
+          #   method_t::getMethodFromListArray  <- fault, unmapped memory
+          #   lookUpImpOrForward
+          #   class_getMethodImplementation
+          #   CA::Layer::class_state(objc_class*)
+          #   -[CALayer init]
+          #   Display.SimpleLayer.__allocating_init
+          #
+          # i.e. the ObjC runtime walking a method list of a Swift class that
+          # subclasses CALayer, and reading a pointer that is not valid. That flag
+          # exists for one purpose -- to rewrite and drop ObjC metadata at link
+          # time -- which makes it the prime suspect for metadata the runtime
+          # cannot read. It only makes the binary smaller, so for a sideload build
+          # the trade is not worth taking. `dead_strip` stays: it removes
+          # unreachable code, not metadata.
           python3 - <<'PY'
           import pathlib
+          import re
 
           make_path = pathlib.Path("build-system/Make/Make.py")
           text = make_path.read_text()
           for marker in ("'--apple_generate_dsym',", "'--output_groups=+dsyms',"):
               print(f"dSYM flag present in Make.py: {marker} -> {marker in text}")
+
+          # Match the whole line, whatever it is indented with, so this keeps
+          # working if upstream reformats the list.
+          pattern = re.compile(r"^[ \t]*'--objc_enable_binary_stripping',[ \t]*\r?\n", re.M)
+          found = pattern.findall(text)
+          if len(found) != 1:
+              # Fail loudly. A silent no-op here would produce a build that looks
+              # exactly like "the fix did not help", which is the worst outcome:
+              # it would send us hunting for a different cause.
+              raise SystemExit(
+                  "objc stripping: expected exactly one flag line in Make.py, found %d" % len(found))
+          make_path.write_text(pattern.sub("", text))
+          print("objc stripping disabled: removed '--objc_enable_binary_stripping' from Make.py")
+          print("mentions left in Make.py: %d"
+                % make_path.read_text().count("--objc_enable_binary_stripping"))
           PY
 
           python3 "$SOURCE_DIR/build-system/Make/ImportCertificates.py" --path "$SOURCE_DIR/build-system/fake-codesigning/certs"
