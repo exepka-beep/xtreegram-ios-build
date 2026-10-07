@@ -74,3 +74,10 @@ python3 "$SCRIPT_DIR/apply_graphics_probe_guard.py" "$SOURCE_DIR"
 # case both for this unsigned build and for a sideload signed with a free Apple
 # ID -- so it has to go regardless of how the IPA gets signed.
 python3 "$SCRIPT_DIR/apply_clouddata_guard.py" "$SOURCE_DIR"
+
+# The crash that appeared only after a SUCCESSFUL login (#19): the account
+# context becomes ready, TelegramPermissions.requiredPermissions() asks about
+# .siri, and INPreferences.siriAuthorizationStatus() raises an ObjC exception
+# because the process has no com.apple.developer.siri entitlement. Not a brk
+# this time -- an uncaught exception, so SIGABRT. Siri is off for good.
+python3 "$SCRIPT_DIR/apply_siri_guard.py" "$SOURCE_DIR"
