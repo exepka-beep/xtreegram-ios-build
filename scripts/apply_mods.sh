@@ -65,3 +65,12 @@ python3 "$SCRIPT_DIR/apply_splash_auto_advance.py" "$SOURCE_DIR"
 # never touched. Route it onto the legacy branch that already exists in the same
 # function instead.
 python3 "$SCRIPT_DIR/apply_graphics_probe_guard.py" "$SOURCE_DIR"
+
+# The crash that only became visible once the app survived past 14 ms. With the
+# graphics probe fixed the process now reaches authorization-screen construction
+# and dies at 1.75 s inside CKContainer.default(), called from
+# CloudData.swift. CloudKit traps with brk #1 when the process has no
+# com.apple.developer.icloud-container-identifiers entitlement, which is the
+# case both for this unsigned build and for a sideload signed with a free Apple
+# ID -- so it has to go regardless of how the IPA gets signed.
+python3 "$SCRIPT_DIR/apply_clouddata_guard.py" "$SOURCE_DIR"
